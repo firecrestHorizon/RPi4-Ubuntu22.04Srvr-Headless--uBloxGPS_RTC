@@ -11,11 +11,11 @@ Aim of this project is to build a simple GNSS receiver, running on a RaspberryPi
 5. Configure Ubuntu to use GNSS board's external real-time clock (RTC) and remove fake-hwclock
 6. Test/check messages from the uBlox GNSS receiever
 
-**Additional Setup Procedure**
+TODO: **Additional Setup Procedure**
 
 To use this RPI/GNSS as a development test rig it is useful to install a programming language (I am using Swift) and to perform some additional configuration steps.
 
-This guide will also show how to configure the system s0 that we can edit code on a MacBook using Xcode, being able to keep the full benefit of the Xcode IDE.
+This guide will also show how to configure the system so that we can edit code on a MacBook using Xcode, being able to keep the full benefit of the Xcode IDE.
 
 1. Install Swift for ARM
 2. (Optional) Install git
@@ -37,7 +37,7 @@ The equipment used for this guide is:
 - Active GPS Antenna (with SMA Connector)
 - microSD card (16GB min, suggested 32GB)
 - microSD card reader
-- PC/laptop, connected to your WiF
+- PC/laptop, connected to your WiFi
 
 There are many GPS expansion boards and antennas available for the RPi, the GPS/RTC expansion board and GPS antenna used in this guide are:
 
@@ -99,7 +99,7 @@ Before flashing the OS, the RPi Imager application allows you to configure setti
   - **Time zone**: Etc/UTC (we want of RPi's TZ to be the same as GPS's TZ)
   - **Keyboard layout**: {your_country_keyboard}
 
-Click `SAVE` to save settinfs and dismiss the pop-up.
+Click `SAVE` to save settings and dismiss the pop-up.
 
 With all the settings done, click `WRITE`, you will shown a warning to let you know that the any data on the SD card will be erased, to continue downloading the OS image file and flash the microSD card, clilck `YES`.
 
