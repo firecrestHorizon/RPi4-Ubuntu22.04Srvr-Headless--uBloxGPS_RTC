@@ -305,7 +305,13 @@ Comment out the lines:
 #/sbin/hwclock --rtc=$dev --systz
 ```
 
+To read the hwclock
+
+``` bash
 sudo hwclock -v -r
+```
+
+![hwclock](./images/hwclock-output.png)
 
 ### Configure the GPS/PPS
 
