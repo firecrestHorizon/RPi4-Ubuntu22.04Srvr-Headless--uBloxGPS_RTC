@@ -2,7 +2,7 @@
 
 Aim of this project is to build a simple GNSS receiver, running on a RaspberryPi, that could then be used as a development test rig for GNSS applications.
 
-**Basic Setup Procedure**
+## Basic Setup Procedure
 
 1. Assemble the RPi and GNSS receiver board
 2. Flash Ubuntu 22.04 LTS Server to microSD
@@ -11,7 +11,7 @@ Aim of this project is to build a simple GNSS receiver, running on a RaspberryPi
 5. Configure Ubuntu to use GNSS board's external real-time clock (RTC) and remove fake-hwclock
 6. Test/check messages from the uBlox GNSS receiever
 
-TODO: **Additional Setup Procedure**
+## TODO: Additional Setup Procedure
 
 To use this RPI/GNSS as a development test rig it is useful to install a programming language (I am using Swift) and to perform some additional configuration steps.
 
@@ -77,8 +77,9 @@ On the RPi Imager app click...
 ![Ubuntu Server 22.04 LTS](./images/RPi_imager_SelectedOS.png)
 
 Next, choose which storage device to flash the OS image to, click...
- - Choose Storage
- - Select the microSD card from the list
+
+- Choose Storage
+- Select the microSD card from the list
 
 ![Flash OS to microSD Card](./images/RPi_imager_SelectedStorage.png)
 
@@ -89,11 +90,11 @@ Before flashing the OS, the RPi Imager application allows you to configure setti
 - **Enable SSH**: Enable the checkbox
   - **Use password authentication**
 - **Set username and password**: Enable the checkbox
-   - **Username**: {your_username} (default = pi)
-   - **Password**: {your_password}
+  - **Username**: {your_username} (default = pi)
+  - **Password**: {your_password}
 - **Configure wireless LAN**: Enable the checkbox
   - **SSID**: {your_wifi_ssid}
-  - **Password**: {your_wifi_password} 
+  - **Password**: {your_wifi_password}
   - **Wireless LAN country**: {your_country_code}
 - **Set locale settings**:  Enable the checkbox
   - **Time zone**: Etc/UTC (we want of RPi's TZ to be the same as GPS's TZ)
@@ -185,7 +186,7 @@ sudo nano /boot/firmware/cmdline.txt
 
 ![cmdline.txt](./images/cmdline_txt_unmodified.png)
 
-Delete the entry `console=serial0,115200 `
+Delete the entry `console=serial0,115200`
 
 ![cmdline.txt](./images/cmdline_txt_modified.png)
 
@@ -206,6 +207,7 @@ cat /dev/serial0 | grep -v -E "(unknown|^$)"
 ```
 
 Example output:
+
 ``` bash
 $GNGSA,A,3,21,01,08,32,22,03,17,19,04,,,,1.13,0.69,0.89*13
 $GNGSA,A,3,88,72,65,87,81,66,73,82,,,,,1.13,0.69,0.89*1F
@@ -225,7 +227,7 @@ To use the GPS board fully and to make use of the hardware real-time clock (RTC)
 Install the necessary tools.
 
 ``` bash
-sudo apt install 12c-tools python3-smbus
+sudo apt install i2c-tools python3-smbus
 ```
 
 Check the current configuration of I2C
@@ -296,7 +298,9 @@ sudo update-rc.d -f fake-hwclock remove
 sudo systemctl disable fake-hwclock
 sudo nano /lib/udev/hwclock-set
 ```
+
 Comment out the lines:
+
 ``` bash
 #if [ -e /run/systemd/system ] ; then
 #    exit 0
@@ -335,6 +339,7 @@ sudo nano /etc/modules
 ```
 
 At the end of the file, add...
+
 ``` bash
 pps-gpio
 ```
