@@ -11,7 +11,7 @@ Aim of this project is to build a simple GNSS receiver, running on a RaspberryPi
 5. Configure Ubuntu to use GNSS board's external real-time clock (RTC) and remove fake-hwclock
 6. Test/check messages from the uBlox GNSS receiever
 
-## TODO: Additional Setup Procedure
+## Additional Setup Procedure
 
 To use this RPI/GNSS as a development test rig it is useful to install a programming language (I am using Swift) and to perform some additional configuration steps.
 
@@ -357,3 +357,372 @@ Output should be similar to...
 ![pps output](./images/pps_output.png)
 
 **N.B.**  Since V3.00 of the Ublox firmware the time pulse is not released until all time parameters are known including leap seconds. There it could be up to 12.5 minutes before time pulse is available however positional lock is achieved from cold in the expected sub 30 seconds.
+
+---
+
+## Additional Setup
+
+### Install Swift
+
+- Run system update and upgrade, install `curl`
+
+``` bash
+sudo apt update && sudo apt upgrade
+sudo apt install curl
+```
+
+- Run Swift lang quick install script
+
+``` bash
+curl -s https://archive.swiftlang.xyz/install.sh | sudo bash
+```
+
+- Script will check for system compatibility, our config should be OK, when prompted select (1) latest release.
+
+![Swift Version Check](./images/swift_version_select.png)
+
+- Install Swift
+
+``` bash
+sudo apt install swiftlang
+```
+
+- Check Swift version
+
+``` bash
+swift --version
+```
+
+![Swift Installed Version](./images/swift-version.png)
+
+### (Optional) Install git
+
+Git should be installed by default with this the current config, check that git is installed.
+
+``` bash
+git --version
+```
+
+![git --version](./images/git-version.png)
+
+If git is not installed...
+
+``` bash
+sudo apt install git
+```
+
+### Setup a shared network folder using Samba
+
+This shared folder will be used so that we can edit code on the RPi from another computer, specifically to use Xcode and have all the benefits of using that Xcode IDE whilst having all the code saved on the RPi.
+
+We will create a `code` folder in the pi user's home folder; create a user group `coders`; then we will configure samba.
+
+In the pi user home folder create a new folder `code`.
+
+``` bash
+cd ~
+mkdir code
+```
+
+Create a new user group `coders`, then add the `pi` user to this group.
+
+``` bash
+sudo groupadd coders
+sudo usermod -aG coders pi
+```
+
+Set the `coders` group to be the group owner of this folder, then give the `coders` group read-write permissions.
+
+``` bash
+sudo chgrp -R coders: ./code
+sudo chmod -R g+rw ./code
+```
+
+With the share setup, we can install and configure samba.
+
+``` bash
+sudo apt-get install -y samba
+
+sudo nano /etc/samba/smb.conf
+```
+
+If your RPi needs to join a specific workgroup of domain, update the `WORKGROUP` name as required.
+
+``` bash
+workgroup = WORKGROUP
+```
+
+At the end of the `smb.conf` file add...
+
+``` bash
+[CODE]
+path = /home/pi/code
+valid users = @coders
+browsable = yes
+writable = yes
+read only = no
+```
+
+Save and close the file.
+
+Restart the samba service for the changes to take effect.
+
+``` bash
+sudo systemctl restart smbd
+```
+
+Add the `pi` user to Samba.
+
+``` bash
+sudo smbpasswd -a pi
+```
+
+Confirm by entering the password for the `pi` user when prompted.  Then enable the user.
+
+``` bash
+sudo smbpasswd -e pi
+```
+
+To connect to the share from macOS, use Finder.  Select `Go -> Connect To Server ...`.  In the pop-up window enter the Samba location of the share, replace xx.xx.xx.xx with the IP address of the RPi.
+
+``` bash
+smb://xx.xx.xx.xx/code
+```
+
+When prompted, enter the username and password we have created.
+
+![samba user credentials](./images/samba-login-macOS.png)
+
+### Build a 'helloGPS' application
+
+For the `helloGPS` app we are going to make use of the existing `SwiftyGPIO` repo.
+
+Uraimo's `UBloxGPS.swift` repo is very close to what we need, but is written to only parse GPS messages, our application must parse multi-GNSS message so we will create a UBloxGNSS parser based on UBloxGPS.swift; both repos created by [uraimo](https://github.com/uraimo).
+
+On the RPi, create a new directory for the `helloGPS` application.
+
+``` bash
+cd ~/code
+mkdir helloGPS
+cd helloGPS
+```
+
+Optionally, enable `git` for this project.
+
+``` bash
+git init
+git add .
+```
+
+Use Swift's package management (SPM) to create a blank executable package.
+
+``` bash
+swift package init --type executable
+```
+
+Now that we have a blank Swift package and a open share on the RPi, we can write the code of our `helloGPS` app using Xcode on macOS.  Using Xcode, open the `package.swift` file that we just created; should just need to open `package.swift`, located in `/Volumes/code/helloGPS/` in Finder.
+
+![helloGPS starter project in Xcode](./images/xcode_helloGPS_blankproject.png)
+
+In `Package.swift` update the package dependencies to include the `SwiftyGPIO` repo, this will download the `SwiftyGPIO` package; then add this package as a target dependency.
+
+``` swift
+import PackageDescription
+
+let package = Package(
+    name: "helloGPS",
+    dependencies: [
+      .package(url: "https://github.com/uraimo/SwiftyGPIO.git", from: "1.0.1")
+    ],
+    targets: [
+        .executableTarget(
+            name: "helloGPS",
+            dependencies: ["SwiftyGPIO"])
+    ]
+)
+```
+
+In `helloGPS/Sources/helloGPS` create a new swift file, `UBloxGNSS.swift` with the following code.
+
+``` swift
+import Foundation
+import SwiftyGPIO
+
+public class UBloxGNSS{
+  var uart: UARTInterface
+  var updateThread: Thread?
+  var running = false
+  
+  public var isDataValid = false
+  public var datetime = "N/A"
+  public var latitude: Double = 0
+  public var longitude: Double = 0
+  public var satellitesActiveNum = 0
+  public var altitude: Double = 0
+  public var altitudeUnit: String = "N/A"
+  
+  // Internal fields for quadrant location used to compute lat/lon
+  var NS: Int = 1
+  var EW: Int = 1
+    
+  public init(_ uart: UARTInterface) {
+    self.uart = uart
+    uart.configureInterface(speed: .S9600, bitsPerChar: .Eight, stopBits: .One, parity: .None)
+    print("Init'd")
+  }
+  
+  public func startUpdating(){
+    //Ignored by Linux
+    guard #available(iOS 10.0, macOS 10.12, *) else {return}
+    
+    if updateThread == nil {
+      updateThread = Thread{ [unowned self] in
+        self.update()
+      }
+    }
+    running = true
+    updateThread!.start()
+  }
+  
+  public func stopUpdating(){
+    running = false
+    updateThread = nil
+  }
+  
+  public func printStatus(){
+    print()
+    print("\tGNSS Values:",(isDataValid ? "valid." : "invalid."))
+    print("\tDate:", datetime)
+    print("\tLatitude:",latitude,"Longitude:",longitude)
+    print("\tAltitude:",altitude,altitudeUnit)
+    print("\tUsable satellites:",satellitesActiveNum)
+    print("\t-------------------------------------------------------- ctl-c to quit")
+    print()
+  }
+  
+  private func update(){
+    while running {
+      let s = uart.readLine()
+      parseNMEA(s)
+    }
+  }
+  
+  /// Parse the NMEA0183 protocol strings that follow the format:
+  ///
+  /// $ttsss,d1,d2,...,dn<CR><LF>
+  ///
+  /// - Parameter text: a string conforming to the protocol
+  ///
+  private func parseNMEA(_ text: String){
+    let comp = text.components(separatedBy: ",")
+    
+    switch comp[0] { //$ttsss
+    case "$GNRMC":
+      // time,valid,lat,NorS,lon,EorW,speed,course,date,magn,EorW,ck
+      // time= hhmmss.ss, date= ddmmyy
+      if comp[1].count > 0 {
+        datetime = comp[9]+" "+String(comp[1].dropLast(3))
+      }
+      
+      isDataValid = (comp[2] == "A")
+      // quadrants, will be used to apply the right sign to lat/lon
+      NS = (comp[2] == "N") ? -1 : 1
+      EW = (comp[6] == "E") ? 1 : -1
+      
+      // latitude and longitude in degrees+minutes format
+      if (comp[3].count > 0) && (comp[5].count > 0) {
+        latitude = Double(String(comp[3].prefix(2)))! +
+        Double(String(comp[3].dropFirst(2)))!/60
+        latitude *= Double(NS)
+        latitude = latitude.roundTo(places: 8)
+        longitude = Double(String(comp[5].prefix(3)))! +
+        Double(String(comp[5].dropFirst(3)))!/60
+        longitude *= Double(EW)
+        longitude = longitude.roundTo(places: 8)
+      }
+    case "$GNGGA":
+      // time,lat,NorS,lon,EorW,quality,numSats,Hdiluition,altitude,unitAltitude,geoidsep,unitGeoidsep,dataAge,[missing in ublox],ck
+      satellitesActiveNum = Int(comp[7]) ?? 0
+      altitude = Double(comp[9]) ?? 0
+      altitudeUnit = comp[10]
+    default:
+      //Unrecognized or ignored string
+      return
+    }
+  }
+  
+  deinit{
+    stopUpdating()
+  }
+}
+
+extension Double {
+  func roundTo(places:Int) -> Double {
+    let divisor = pow(10.0, Double(places))
+    return (self * divisor).rounded() / divisor
+  }
+}
+
+```
+
+Edit the `main.swift` file as follows.
+
+``` swift
+import Foundation
+import SwiftyGPIO
+
+var signalReceived: sig_atomic_t = 0
+signal(SIGINT) { signal in
+  signalReceived = signal
+}
+
+let uarts = SwiftyGPIO.UARTs(for: .RaspberryPi4)!
+var uart = uarts[0]
+let gnss = UBloxGNSS(uart)
+
+gnss.startUpdating()
+while signalReceived == 0 {
+  #if os(Linux)
+    system("clear")
+  #endif
+  gnss.printStatus()
+  sleep(1)
+}
+gnss.startUpdating()
+
+exit(signalReceived)
+
+```
+
+Save the Xcode project.
+
+On the RPi, build the application in the terminal window.
+
+``` bash
+swift build
+```
+
+Assuming there are no errors, then run the application.
+
+``` bash
+swift run
+```
+
+The appliction will read the messages sent from the UBlox GNSS receiver and will decode the `$GNRMC` and `$GNGGA` messages, update the display every second, displaying the receiver position and usable satellite count.
+
+![helloGPS](./images/helloGPS_app_output.png)
+
+
+#### Build and install a release version of `helloGPS`
+
+``` bash
+swift build -c release
+cd .build/release
+sudo cp -f helloGPS /user/local/bin/hellogps
+```
+
+Invoke the application by running `hellogps`
+
+**That's All Folks!**
+
+---
